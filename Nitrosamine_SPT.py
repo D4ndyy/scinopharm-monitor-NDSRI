@@ -15,34 +15,25 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # --- 頁面設定 ---
 st.set_page_config(page_title="ScinoPharm Nitrosamine Monitor", layout="wide")
-st.title("🧪 ScinoPharm Nitrosamine Monitor (v7.4 Chemical Group Fix)")
+st.title("🧪 ScinoPharm Nitrosamine Monitor (v7.3 Table 1&2 Only)")
 st.markdown("""
-### 🛠️ v7.4 功能更新：
-1.  **化學基團誤判修正**：新增 `ETHYL`, `METHYL`, `BENZOATE` 等常見化學字根至過濾清單，徹底解決 "Levodopa Ethyl" 亂抓的問題。
-2.  **FDA 資料鎖定**：維持僅抓取 FDA Table 1 & 2 的邏輯。
-3.  **JSON 強力抓取**：保留針對動態網頁的解析能力。
+### 🛠️ v7.3 功能更新 (Fix NameError)：
+1.  **修復 NameError**：補回 `get_display_col` 函數，解決欄位搜尋時的錯誤。
+2.  **精準鎖定 FDA Table 1 & 2**：僅保留前兩個主要表格。
+3.  **JSON 嗅探 (Fallback)**：保留強大的 JSON 解析能力。
+4.  **誤判修正**：Compound/Form 等關鍵字過濾邏輯全保留。
 """)
 
 # ==========================================
 # 0. 定義通用字與雜訊 (Stop Words)
 # ==========================================
 STOP_WORDS = {
-    # --- 鹽類與酸根 ---
     "ACID", "SODIUM", "POTASSIUM", "CALCIUM", "MAGNESIUM", "HYDROCHLORIDE", "HCL", 
     "HYDROBROMIDE", "HBR", "ACETATE", "TARTRATE", "CITRATE", "MALEATE", "FUMARATE", 
-    "MESYLATE", "SUCCINATE", "PHOSPHATE", "SULFATE", "BASE", "BENZOATE", "PAMOATE", 
-    "ESTOLATE", "GLUCEPTATE", "GLUCONATE", "LACTATE", "STEARATE",
-    
-    # --- 常見化學基團 (避免匹配到雜質 IUPAC Name 中的結構) ---
-    "ETHYL", "METHYL", "PROPYL", "BUTYL", "PHENYL", "BENZYL", "ESTER",
-    
-    # --- 藥典與標準 ---
-    "USP", "EP", "BP", "JP",
-    
-    # --- 劑型與一般描述 ---
+    "MESYLATE", "SUCCINATE", "PHOSPHATE", "SULFATE", "BASE", "USP", "EP", "BP", "JP",
     "TABLETS", "CAPSULES", "INJECTION", "SOLUTION", "ORAL", "EXTENDED", "RELEASE",
     "API", "NAME", "PRODUCT", "DRUG", "SUBSTANCE", "UNKNOWN", "AND", "WITH",
-    "FORM", "TYPE", "CLASS", "GRADE", "GROUP", "PART", "COMPOUND", "IMPURITY"
+    "FORM", "TYPE", "CLASS", "GRADE", "GROUP", "PART", "COMPOUND"
 }
 
 # ==========================================
@@ -277,6 +268,7 @@ def get_fda_data():
                     json_data = json.loads(clean_match)
                     if isinstance(json_data, list) and len(json_data) > 0:
                         df = pd.DataFrame(json_data)
+                        # JSON 抓出來的通常沒有 header，或 header 就是 key
                         all_tables_data.append(df)
                         logs.append(f"JSON Block {i} parsed: {len(df)} rows.")
                 except:
@@ -375,8 +367,10 @@ def get_fda_data():
                 df = df.reset_index(drop=True)
                 valid_dfs.append(df)
         
-        # 只取前兩個表格
+        # 【關鍵修正 v7.3】只取前兩個表格 (Table 1 & 2)
         if valid_dfs:
+            # FDA 的核心資料通常在最前面的表格
+            # 如果抓到太多雜表，只取前 2 個
             target_dfs = valid_dfs[:2]
             final_df = pd.concat(target_dfs, ignore_index=True)
             final_df = final_df.reset_index(drop=True)
@@ -467,6 +461,24 @@ def smart_match(scino_api, row_series):
             
     return False, ""
 
+def get_display_col(df_columns, keyword_list):
+    if isinstance(keyword_list, str):
+        keyword_list = [keyword_list]
+        
+    cols = {c.lower(): c for c in df_columns}
+    
+    for kw in keyword_list:
+        kw = kw.lower()
+        if kw == 'name': 
+             for c_lower, c_orig in cols.items():
+                if c_lower == 'name':
+                    return c_orig
+
+        for c_lower, c_orig in cols.items():
+            if kw in c_lower:
+                return c_orig
+    return None
+
 # ==========================================
 # 4. Excel 生成
 # ==========================================
@@ -554,13 +566,14 @@ if ready_to_run:
 
         # --- FDA 比對 ---
         if not fda_df.empty:
-            nitro_col = get_display_col(fda_df.columns, 'nitrosamine')
-            limit_col = get_display_col(fda_df.columns, ['limit', 'intake', 'ng/day'])
-            iupac_col = get_display_col(fda_df.columns, ['iupac', 'chemical name']) 
-            source_col = get_display_col(fda_df.columns, 'source')
-            drug_col = get_display_col(fda_df.columns, 'drug')
-            note_col = get_display_col(fda_df.columns, ['note', 'comment', 'remark'])
-            ref_col = source_col if source_col else drug_col
+            # 使用 get_display_col 以支援標準化或原始欄位名稱
+            nitro_col = get_display_col(fda_df.columns, ['Nitrosamine', 'nitrosamine', 'impurity'])
+            limit_col = get_display_col(fda_df.columns, ['Limit', 'limit', 'ai'])
+            iupac_col = get_display_col(fda_df.columns, ['IUPAC', 'iupac'])
+            source_col = get_display_col(fda_df.columns, ['Source', 'source'])
+            note_col = get_display_col(fda_df.columns, ['Notes', 'note', 'comment'])
+            
+            ref_col = source_col
 
             for _, row in fda_df.iterrows():
                 for my_api_obj in api_list:
@@ -573,20 +586,21 @@ if ready_to_run:
                             "Source": "USFDA",
                             "ScinoPharm Product": my_api_name,
                             "SPT Project num": my_api_spt,
-                            "Nitrosamine Impurity": row[nitro_col] if nitro_col else "Check Row",
-                            "IUPAC Name": row[iupac_col] if iupac_col else "N/A",  
-                            "Limit (AI)": row[limit_col] if limit_col else "N/A",
-                            "Notes": row[note_col] if note_col else "N/A",
-                            "Matched in Column": ref_col if ref_col else "Full Row Match",
-                            "Reference Value": row[ref_col] if ref_col else "See Raw Data"
+                            "Nitrosamine Impurity": row[nitro_col] if nitro_col and pd.notna(row[nitro_col]) else "Check Row",
+                            "IUPAC Name": row[iupac_col] if iupac_col and pd.notna(row[iupac_col]) else "N/A",  
+                            "Limit (AI)": row[limit_col] if limit_col and pd.notna(row[limit_col]) else "N/A",
+                            "Notes": row[note_col] if note_col and pd.notna(row[note_col]) else "N/A",
+                            "Matched in Column": "Full Row",
+                            "Reference Value": row[ref_col] if ref_col and pd.notna(row[ref_col]) else "See Raw Data"
                         })
 
         # --- EMA 比對 ---
         if not ema_df.empty:
+            # 使用 get_display_col
             nitro_col = get_display_col(ema_df.columns, ['name', 'nitrosamine', 'impurity'])
             limit_col = get_display_col(ema_df.columns, ['ai (ng/day)', 'limit', 'intake', 'ai'])
             iupac_col = get_display_col(ema_df.columns, ['iupac', 'chemical name'])
-            source_col = get_display_col(ema_df.columns, 'source')
+            source_col = get_display_col(ema_df.columns, ['source'])
             drug_col = get_display_col(ema_df.columns, ['substance', 'api', 'product', 'active'])
             note_col = get_display_col(ema_df.columns, ['note', 'comment', 'remark'])
             ref_col = source_col if source_col else drug_col
@@ -630,7 +644,7 @@ if ready_to_run:
             st.download_button(
                 label="📥 下載完整 Excel 報表",
                 data=excel_data,
-                file_name='ScinoPharm_Nitrosamine_Analysis_v7.4.xlsx',
+                file_name='ScinoPharm_Nitrosamine_Analysis_v7.3.xlsx',
                 mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
                 type="primary"
             )
