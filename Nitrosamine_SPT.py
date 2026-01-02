@@ -15,131 +15,31 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # --- 頁面設定 ---
 st.set_page_config(page_title="ScinoPharm Nitrosamine Monitor", layout="wide")
-st.title("🧪 ScinoPharm Nitrosamine Monitor (v7.6 Expanded Stop Words)")
+st.title(" ScinoPharm Nitrosamine Monitor (v7.8 History Tracking)")
 st.markdown("""
-### 🛠️ v7.6 功能更新：
-1.  **停用詞大幅擴充**：加入更多常見化學基團 (Isopropyl, Methoxy...) 與水合物描述 (Hydrate, Anhydrous)，進一步降低誤判。
-2.  **FDA 資料鎖定**：維持僅抓取 FDA Table 1 & 2 的邏輯。
-3.  **JSON 強力抓取**：保留針對動態網頁的解析能力。
+###  v7.8 功能更新：
+1.  **歷史追蹤 (Tracking)**：上傳上次的 Excel 報表，程式會自動比對並標記出本次新增的資料 (Status: ★ NEW)。
+2.  **EMA 抓取修復 (v7.7)**：保留 EMA 多分頁讀取與寬鬆表頭判定。
+3.  **其他修正**：保留 FDA 抓取、化學基團過濾等功能。
 """)
 
 # ==========================================
 # 0. 定義通用字與雜訊 (Stop Words)
 # ==========================================
 STOP_WORDS = {
-    # --- 鹽類與酸根 (Salts & Acids) ---
-    "ACID",
-    "SODIUM",
-    "POTASSIUM",
-    "CALCIUM",
-    "MAGNESIUM",
-    "HYDROCHLORIDE",
-    "HCL",
-    "HYDROBROMIDE",
-    "HBR",
-    "ACETATE",
-    "TARTRATE",
-    "CITRATE",
-    "MALEATE",
-    "FUMARATE",
-    "MESYLATE",
-    "SUCCINATE",
-    "PHOSPHATE",
-    "SULFATE",
-    "BASE",
-    "BENZOATE",
-    "PAMOATE",
-    "ESTOLATE",
-    "GLUCEPTATE",
-    "GLUCONATE",
-    "LACTATE",
-    "STEARATE",
-    "BESYLATE",
-    "TOSYLATE",
-
-    # --- 常見化學基團與取代基 (Substituents & Groups) ---
-    "ETHYL",
-    "METHYL",
-    "PROPYL",
-    "BUTYL",
-    "PHENYL",
-    "BENZYL",
-    "ESTER",
-    "ISOPROPYL",
-    "TERT-BUTYL",
-    "DIMETHYL",
-    "DIETHYL",
-    "TRIMETHYL",
-    "TRIETHYL",
-    "METHOXY",
-    "ETHOXY",
-    "PHENOXY",
-    "BENZOXY",
-    "HYDROXY",
-    "AMINO",
-    "CHLORO",
-    "FLUORO",
-    "BROMO",
-    "IODO",
-    "CYANO",
-    "NITRO",
-    "ACETYL",
-    "BENZOYL",
-    "AMIDE",
-    "AMINE",
-    "ETHER",
-    "KETONE",
-
-    # --- 水合物與狀態 (Hydrates & State) ---
-    "HYDRATE",
-    "ANHYDROUS",
-    "HEMIHYDRATE",
-    "DIHYDRATE",
-    "TRIHYDRATE",
-    "SOLVATE",
-
-    # --- 藥典與標準 (Pharmacopeia) ---
-    "USP",
-    "EP",
-    "BP",
-    "JP",
-    "NF",
-
-    # --- 劑型與一般描述 (Dosage & Desc) ---
-    "TABLETS",
-    "CAPSULES",
-    "INJECTION",
-    "SOLUTION",
-    "ORAL",
-    "EXTENDED",
-    "RELEASE",
-    "API",
-    "NAME",
-    "PRODUCT",
-    "DRUG",
-    "SUBSTANCE",
-    "UNKNOWN",
-    "AND",
-    "WITH",
-    "FORM",
-    "TYPE",
-    "CLASS",
-    "GRADE",
-    "GROUP",
-    "PART",
-    "COMPOUND",
-    "IMPURITY",
-    "NEW",
-    "OLD",
-    "TEST",
-    "SAMPLE",
-    "ITEM",
-    "MATERIAL",
-    "DEGRADANT"
+    "ACID", "SODIUM", "POTASSIUM", "CALCIUM", "MAGNESIUM", "HYDROCHLORIDE",
+    "HCL", "HYDROBROMIDE", "HBR", "ACETATE", "TARTRATE", "CITRATE", "MALEATE",
+    "FUMARATE", "MESYLATE", "SUCCINATE", "PHOSPHATE", "SULFATE", "BASE",
+    "BENZOATE", "PAMOATE", "ESTOLATE", "GLUCEPTATE", "GLUCONATE", "LACTATE",
+    "STEARATE", "ETHYL", "METHYL", "PROPYL", "BUTYL", "PHENYL", "BENZYL",
+    "ESTER", "USP", "EP", "BP", "JP", "TABLETS", "CAPSULES", "INJECTION",
+    "SOLUTION", "ORAL", "EXTENDED", "RELEASE", "API", "NAME", "PRODUCT",
+    "DRUG", "SUBSTANCE", "UNKNOWN", "AND", "WITH", "FORM", "TYPE", "CLASS",
+    "GRADE", "GROUP", "PART", "COMPOUND", "IMPURITY", "NEW", "NAB"
 }
 
 # ==========================================
-# 1. 核心函數: 產品清單來源 (自動爬蟲 OR 手動上傳)
+# 1. 核心函數: 產品清單來源
 # ==========================================
 
 
@@ -310,7 +210,6 @@ def parse_uploaded_file(uploaded_file):
 
             cleaned_name = clean_api_name(name_str)
 
-            # 過濾 "Compound X"
             is_generic_compound = False
             if "compound" in cleaned_name.lower():
                 remain = cleaned_name.lower().replace("compound", "").strip()
@@ -382,7 +281,6 @@ def get_fda_data():
 
         all_tables_data = []
 
-        # --- 策略 1: 嘗試從 JSON 資料中提取 (針對動態表格) ---
         json_pattern = re.compile(r'data\s*:\s*(\[\s*\{.*\}\s*\])', re.DOTALL)
         matches = json_pattern.findall(raw_html)
 
@@ -396,12 +294,12 @@ def get_fda_data():
                     json_data = json.loads(clean_match)
                     if isinstance(json_data, list) and len(json_data) > 0:
                         df = pd.DataFrame(json_data)
+                        df = df.reset_index(drop=True)
                         all_tables_data.append(df)
                         logs.append(f"JSON Block {i} parsed: {len(df)} rows.")
                 except:
                     pass
 
-        # --- 策略 2: 手動解析 HTML Table (備援) ---
         soup = BeautifulSoup(raw_html, 'html.parser')
         tables = soup.find_all('table')
 
@@ -422,7 +320,6 @@ def get_fda_data():
                             for td in first_row.find_all(['td', 'th'])
                         ]
 
-                # 防呆：確保 headers 不重複
                 if headers_list:
                     headers_list = [
                         h if h else f"Unnamed_{j}"
@@ -473,10 +370,8 @@ def get_fda_data():
             except Exception as e:
                 logs.append(f"Manual parse failed for table {i}: {e}")
 
-        # --- 處理與標準化 ---
         valid_dfs = []
         for df in all_tables_data:
-            # 清理欄位
             df.columns = [
                 str(c).strip().replace('\n', ' ') for c in df.columns
             ]
@@ -510,7 +405,6 @@ def get_fda_data():
                 df = df.reset_index(drop=True)
                 valid_dfs.append(df)
 
-        # 【關鍵修正】只取前兩個表格 (Table 1 & 2)
         if valid_dfs:
             target_dfs = valid_dfs[:2]
             final_df = pd.concat(target_dfs, ignore_index=True)
@@ -559,37 +453,57 @@ def get_ema_data():
                                      headers=headers,
                                      verify=False)
 
-            temp_df = pd.read_excel(io.BytesIO(file_resp.content),
-                                    header=None,
-                                    nrows=30)
+            xls = pd.read_excel(io.BytesIO(file_resp.content),
+                                sheet_name=None,
+                                header=None)
 
-            best_idx = 0
-            max_score = 0
-            keywords = [
-                "nitrosamine", "limit", "intake", "substance", "ng/day",
-                "iupac", "impurity", "structure", "cas", "source",
-                "ai (ng/day)"
-            ]
+            all_sheets_data = []
 
-            for idx, row in temp_df.iterrows():
-                row_text = " ".join(
-                    [str(x).lower() for x in row if pd.notna(x)])
-                score = sum(1 for k in keywords if k in row_text)
+            for sheet_name, temp_df in xls.items():
+                log_messages.append(f"Analyzing EMA Sheet: {sheet_name}")
 
-                if score > max_score:
-                    max_score = score
-                    best_idx = idx
+                best_idx = 0
+                max_score = 0
+                keywords = [
+                    "nitrosamine", "limit", "intake", "substance", "ng/day",
+                    "iupac", "impurity", "structure", "cas", "source",
+                    "ai (ng/day)"
+                ]
 
-            log_messages.append(
-                f"Header Scoring: Selected Row {best_idx} with score {max_score}"
-            )
+                scan_rows = min(30, len(temp_df))
+                for idx in range(scan_rows):
+                    row = temp_df.iloc[idx]
+                    row_text = " ".join(
+                        [str(x).lower() for x in row if pd.notna(x)])
+                    score = sum(1 for k in keywords if k in row_text)
+                    if score > max_score:
+                        max_score = score
+                        best_idx = idx
 
-            df = pd.read_excel(io.BytesIO(file_resp.content), header=best_idx)
-            df.columns = [
-                str(c).strip().replace('\n', ' ') for c in df.columns
-            ]
+                if max_score == 0 and len(temp_df) < 5:
+                    log_messages.append(
+                        f"  -> Skipping small/irrelevant sheet: {sheet_name}")
+                    continue
 
-            return df, log_messages
+                new_header = temp_df.iloc[best_idx]
+                df = temp_df.iloc[best_idx + 1:].copy()
+                df.columns = new_header
+                df.columns = [
+                    str(c).strip().replace('\n', ' ') for c in df.columns
+                ]
+
+                df = df.reset_index(drop=True)
+                all_sheets_data.append(df)
+                log_messages.append(
+                    f"  -> Added table from {sheet_name} with {len(df)} rows.")
+
+            if all_sheets_data:
+                final_df = pd.concat(all_sheets_data, ignore_index=True)
+                final_df = final_df.reset_index(drop=True)
+                return final_df, log_messages
+
+            return pd.DataFrame(), log_messages
+
         return pd.DataFrame(), ["No link found"]
     except Exception as e:
         return pd.DataFrame(), [str(e)]
@@ -668,6 +582,11 @@ source_mode = st.sidebar.radio(
     "選擇產品清單來源 (Source):",
     ("🌐 自動爬取神隆官網 (Auto-Scrape)", "📂 手動上傳清單 (Manual Upload)"))
 
+# 【新增功能 v7.8】歷史比對檔案上傳
+st.sidebar.markdown("---")
+st.sidebar.subheader("📜 歷史追蹤 (History Tracking)")
+history_file = st.sidebar.file_uploader("上傳上次的結果 (Optional)", type=['xlsx'])
+
 api_list = []
 log_msgs = []
 ready_to_run = False
@@ -691,7 +610,7 @@ if source_mode == "🌐 自動爬取神隆官網 (Auto-Scrape)":
 
 else:
     st.sidebar.info("請上傳 Excel (.xlsx) 或 CSV 檔。支援 'SPT' 欄位自動讀取。")
-    uploaded_file = st.sidebar.file_uploader("上傳檔案", type=['xlsx', 'csv'])
+    uploaded_file = st.sidebar.file_uploader("上傳產品清單", type=['xlsx', 'csv'])
 
     if uploaded_file:
         api_list, log_msgs = parse_uploaded_file(uploaded_file)
@@ -724,7 +643,7 @@ if ready_to_run:
             )
         else:
             status_box.write(f"⚠️ FDA: 0 筆 (抓取失敗), EMA: {len(ema_df)} 筆")
-            log_msgs.extend(fda_logs)  # 將 FDA 錯誤訊息加入 Log
+            log_msgs.extend(fda_logs)
 
         # 3. 比對
         status_box.write("🔍 執行比對...")
@@ -732,12 +651,14 @@ if ready_to_run:
 
         # --- FDA 比對 ---
         if not fda_df.empty:
-            # v7.6: 使用標準化後的欄位名稱
-            nitro_col = 'Nitrosamine' if 'Nitrosamine' in fda_df.columns else None
-            limit_col = 'Limit' if 'Limit' in fda_df.columns else None
-            iupac_col = 'IUPAC' if 'IUPAC' in fda_df.columns else None
-            source_col = 'Source' if 'Source' in fda_df.columns else None
-            note_col = 'Notes' if 'Notes' in fda_df.columns else None
+            nitro_col = get_display_col(
+                fda_df.columns, ['Nitrosamine', 'nitrosamine', 'impurity'])
+            limit_col = get_display_col(fda_df.columns,
+                                        ['Limit', 'limit', 'ai'])
+            iupac_col = get_display_col(fda_df.columns, ['IUPAC', 'iupac'])
+            source_col = get_display_col(fda_df.columns, ['Source', 'source'])
+            note_col = get_display_col(fda_df.columns,
+                                       ['Notes', 'note', 'comment'])
 
             ref_col = source_col
 
@@ -756,47 +677,32 @@ if ready_to_run:
                             "SPT Project num":
                             my_api_spt,
                             "Nitrosamine Impurity":
-                            row[nitro_col] if nitro_col
-                            and pd.notna(row[nitro_col]) else "Check Row",
+                            row[nitro_col] if nitro_col else "Check Row",
                             "IUPAC Name":
-                            row[iupac_col] if iupac_col
-                            and pd.notna(row[iupac_col]) else "N/A",
+                            row[iupac_col] if iupac_col else "N/A",
                             "Limit (AI)":
-                            row[limit_col] if limit_col
-                            and pd.notna(row[limit_col]) else "N/A",
+                            row[limit_col] if limit_col else "N/A",
                             "Notes":
-                            row[note_col]
-                            if note_col and pd.notna(row[note_col]) else "N/A",
+                            row[note_col] if note_col else "N/A",
                             "Matched in Column":
-                            "Full Row",
+                            ref_col if ref_col else "Full Row Match",
                             "Reference Value":
-                            row[ref_col] if ref_col and pd.notna(row[ref_col])
-                            else "See Raw Data"
+                            row[ref_col] if ref_col else "See Raw Data"
                         })
 
         # --- EMA 比對 ---
         if not ema_df.empty:
-            # EMA 欄位尋找邏輯維持動態，因為只有一個 Excel
-            cols = {c.lower(): c for c in ema_df.columns}
-            nitro_col = next((cols[c] for c in cols if any(
-                x in c for x in ['name', 'nitrosamine', 'impurity'])), None)
-            limit_col = next((cols[c] for c in cols if any(
-                x in c for x in ['ai (ng/day)', 'limit', 'intake', 'ai'])),
-                             None)
-            iupac_col = next(
-                (cols[c]
-                 for c in cols if any(x in c
-                                      for x in ['iupac', 'chemical name'])),
-                None)
-            source_col = next((cols[c] for c in cols if 'source' in c), None)
-            drug_col = next((cols[c] for c in cols if any(
-                x in c for x in ['substance', 'api', 'product', 'active'])),
-                            None)
-            note_col = next(
-                (cols[c]
-                 for c in cols if any(x in c
-                                      for x in ['note', 'comment', 'remark'])),
-                None)
+            nitro_col = get_display_col(ema_df.columns,
+                                        ['name', 'nitrosamine', 'impurity'])
+            limit_col = get_display_col(
+                ema_df.columns, ['ai (ng/day)', 'limit', 'intake', 'ai'])
+            iupac_col = get_display_col(ema_df.columns,
+                                        ['iupac', 'chemical name'])
+            source_col = get_display_col(ema_df.columns, ['source'])
+            drug_col = get_display_col(
+                ema_df.columns, ['substance', 'api', 'product', 'active'])
+            note_col = get_display_col(ema_df.columns,
+                                       ['note', 'comment', 'remark'])
             ref_col = source_col if source_col else drug_col
 
             for _, row in ema_df.iterrows():
@@ -838,23 +744,95 @@ if ready_to_run:
         if match_results:
             final_df = pd.DataFrame(match_results).drop_duplicates()
 
-            # 調整欄位順序
+            # 【新增功能 v7.8】歷史比對邏輯
+            final_df['Status'] = ""  # 預設為空
+
+            if history_file:
+                try:
+                    # 讀取舊檔案 (預設讀取 Summary_Match 分頁，若無則讀第一頁)
+                    try:
+                        old_df = pd.read_excel(history_file,
+                                               sheet_name='Summary_Match')
+                    except:
+                        old_df = pd.read_excel(history_file)
+
+                    # 建立指紋集合: SPT編號 + 雜質名稱 (去除空白與大小寫以確保比對準確)
+                    # 如果沒有 SPT 欄位，則改用 產品名稱 + 雜質名稱
+                    old_fingerprints = set()
+
+                    spt_col_name = None
+                    for c in old_df.columns:
+                        if 'spt' in c.lower():
+                            spt_col_name = c
+                            break
+
+                    nitro_col_name = None
+                    for c in old_df.columns:
+                        if 'nitrosamine' in c.lower(
+                        ) and 'impurity' in c.lower():
+                            nitro_col_name = c
+                            break
+
+                    if nitro_col_name:
+                        for _, row in old_df.iterrows():
+                            # 組合指紋 Key
+                            key_part1 = str(row[spt_col_name]).strip().upper(
+                            ) if spt_col_name else str(row[0]).strip().upper()
+                            key_part2 = str(
+                                row[nitro_col_name]).strip().upper()
+                            old_fingerprints.add(f"{key_part1}|{key_part2}")
+
+                    # 比對新資料
+                    new_count = 0
+                    for idx, row in final_df.iterrows():
+                        key_part1 = str(row['SPT Project num']).strip().upper(
+                        ) if 'SPT Project num' in row else str(
+                            row['ScinoPharm Product']).strip().upper()
+                        key_part2 = str(
+                            row['Nitrosamine Impurity']).strip().upper()
+                        current_fp = f"{key_part1}|{key_part2}"
+
+                        if current_fp not in old_fingerprints:
+                            final_df.at[idx, 'Status'] = "★ NEW"
+                            new_count += 1
+
+                    if new_count > 0:
+                        st.warning(f"🔔 發現 {new_count} 筆新資料！已標記為 '★ NEW'")
+                    else:
+                        st.info("✅ 與歷史紀錄相比，無新增資料。")
+
+                except Exception as e:
+                    st.error(f"歷史檔案比對失敗: {e}")
+
+            # 調整欄位順序 (Status 放最前)
             cols_order = [
-                "Source", "ScinoPharm Product", "SPT Project num",
+                "Status", "Source", "ScinoPharm Product", "SPT Project num",
                 "Nitrosamine Impurity", "IUPAC Name", "Limit (AI)", "Notes",
                 "Reference Value"
             ]
             cols_order = [c for c in cols_order if c in final_df.columns]
             final_df = final_df[cols_order]
 
+            # 根據 Status 排序，新發現的放前面
+            final_df = final_df.sort_values(
+                by=['Status', 'ScinoPharm Product'], ascending=[False, True])
+
             st.subheader(f"📊 比對結果 (共 {len(final_df)} 筆)")
-            st.dataframe(final_df, use_container_width=True, height=500)
+
+            # 使用 style highlight 新資料
+            def highlight_new(row):
+                return ['background-color: #ffffcc'] * len(
+                    row) if row['Status'] == '★ NEW' else [''] * len(row)
+
+            st.dataframe(final_df.style.apply(highlight_new, axis=1),
+                         use_container_width=True,
+                         height=500)
 
             excel_data = generate_excel(final_df, fda_df, ema_df)
             st.download_button(
                 label="📥 下載完整 Excel 報表",
                 data=excel_data,
-                file_name='ScinoPharm_Nitrosamine_Analysis_v7.6.xlsx',
+                file_name='ScinoPharm_Nitrosamine_Analysis_v7.8.xlsx',
                 mime=
                 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
                 type="primary")
