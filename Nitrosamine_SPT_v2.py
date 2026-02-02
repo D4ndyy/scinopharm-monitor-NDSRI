@@ -19,7 +19,7 @@ st.title(" ScinoPharm Nitrosamine Monitor (v2 History Tracking)")
 st.markdown("""
 ###  v2 功能更新：
 1.  **歷史追蹤 (Tracking)**：上傳上次的 Excel 報表，程式會自動比對並標記出本次新增的資料 (Status: ★ NEW)。
-2.  **EMA 抓取修復 **：保留 EMA 多分頁讀取與寬鬆表頭判定。
+2.  **EMA 抓取修復**：保留 EMA 多分頁讀取與寬鬆表頭判定。
 3.  **其他修正**：保留 FDA 抓取、化學基團過濾等功能。
 """)
 
@@ -898,5 +898,6 @@ with st.expander("🛠️ Debug Logs"):
             st.text(msg)
     else:
         st.text("尚無紀錄")
+
 
 
